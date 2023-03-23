@@ -1,5 +1,6 @@
 import binascii
 import time
+from timeit import default_timer as timer
 import random
 import pygame.gfxdraw
 
@@ -25,6 +26,7 @@ class Memory:
         self.rects = rects
         #self.sqr =  u'\u23F9'
         self.sqr = '#'
+        self.y_offset = self
 
                     #________________stack___________________#
         #The stack is only used to store return addresses when subroutines are called.
@@ -34,7 +36,7 @@ class Memory:
         # display
         self.rows, self.cols = (70, 68)
         self.buffer = [[" " for i in range(self.cols)] for j in range(self.rows)]
-
+        self.pixels = [[" " for i in range(self.cols)] for j in range(self.rows)]
         self.display = [0] * 340 * 338
         self.key_inputs = [0] * 16
         self.delay_timer = 0
@@ -42,11 +44,13 @@ class Memory:
         self.should_draw = False
         self.F = open
         self.x_coord = 0
+        self.prev_X = 0
         self.y_coord = 0
+        self.y_offset = 0
 
 
         # sprites usually stored at 050–09F
-        self.zero = [0xF0, 0x90, 0x90, 0x90, 0xF0]
+        self.zero = [0xF0, 0xF0, 0x90, 0x90, 0xF0]
         self.one =  [0x20, 0x60, 0x20, 0x20, 0x70]
         self.two = [0xF0, 0x10, 0xF0, 0x80, 0xF0]
         self.three = [0xF0, 0x10, 0xF0, 0x10, 0xF0]
@@ -64,6 +68,12 @@ class Memory:
         self.E = [0xF0, 0x80, 0xF0, 0x80, 0xF0]
         self.F = [0xF0, 0x80, 0xF0, 0x80, 0x80]
 
+        self.system_mem[0x050] = 0xF0
+        self.system_mem[0x051] = 0xF0
+        self.system_mem[0x052] = 0x90
+        self.system_mem[0x053] = 0x90
+        self.system_mem[0x054] = 0xF0
+
         self.pygame = pygame
         self.window = window
 
@@ -72,83 +82,67 @@ class Memory:
     #pygame draw function called from DXYN
     def draw(self,height,start_time):
         print("")
+
         # debug code
-        print("self.index_reg = ", hex(self.index_reg), " and contains ", hex(self.system_mem[self.index_reg]))
-
-        #i = 0x0
-        #for x in self.VX:
-        #    print("V[", hex(i), "] = ", hex(x))
-        #    i += 1
-
         print( hex(self.x_coord) ," ",  hex(self.y_coord) )
-        time_dif = end_time = time.time()
-       # print("time_dif ",time_dif)
+        bits = [0]*8
+        self.y_coord = self.y_coord*6  #write now this is
+        self.x_coord = self.x_coord*6
 
-        self.window.fill((23, 42, 124))                #  x     y   len   height
-
-        #time.sleep(1/3)
-        #print("what is in what index_reg is pointing to? Checking system memory ",bin(self.system_mem[self.index_reg]))
-        #dereferenced_I = self.system_mem[self.index_reg]
-        #print(bin(dereferenced_I))
-        bits = [0 for i in range(8)]
 
         #change!
-        for t in range(height):
-            dereferenced_I = self.system_mem[self.index_reg + t]  # move to next row pixel
+        for y in range(height):
+            print("testing offset ", self.y_offset)
+            a = self.x_coord
+
+            dereferenced_I = self.system_mem[self.index_reg + y]  # move to next row pixel
             #print(bin(dereferenced_I))
             for i in range(8):
                 bits[7-i] = 1 if dereferenced_I & 1 else 0 #7-i is used because bits are being shifted off the end into the container "bits"
                 dereferenced_I = dereferenced_I >> 1
 
-            for j in range(8):
-                if bits[j] == 1:
-                    #print("printing pixel " )
-                    self.pygame.draw.rect(self.window, (233, 21, 123), (self.x_coord, self.y_coord, 1, height))
-                    #self.rects = self.window.blit(self.window, self.pygame.draw.rect(self.window, (233, 21, 123), (x_coord +i, y_coord, 8, height)) )
-                    self.pygame.display.flip()
-                    #[4 if x == 1 else x for x in a]
-                    #[self.sqr if x== 0 else x for x in self.buffer]
-                    self.buffer[self.y_coord+t][self.x_coord + j]= self.sqr
+            for x in range(8):
 
-        for r in self.buffer:
-            for c in r:
-                print(c, end=" ")
-            print()
+                if bits[x] == 1:
 
+                    self.pygame.draw.rect(self.window, (233, 21, 123), (a, self.y_coord , 5, 5))
+                    #print("b is ", b)
+                    a += 5
+                    start = timer()
+                    print("start time", start)
+                    end = timer()
+                    dif = end - start
+                    while dif < (1/60):
+                        end = timer()
+                        dif = end - start
+                    pygame.display.flip()
+                else:
+                    a +=5 #ensures the correct pixel drawing for 0's decoded from index_reg
+                    #print("drawing ", hex(self.x_coord) )
 
+            self.y_offset +=5 # needed to draw additional rows
+            if self.y_offset % 20 == 0:
+                self.y_offset = 0
+            for r in self.buffer:
+                for c in r:
+                    print(c, end=" ")
+                print()
 
-        #self.pygame.draw.rect(self.window, (233, 21, 123),  (x_coord, y_coord, 8, height))
 
 
 
 
     def emulateCycle(self,start_time,rects):
-        #print("index_reg type is ", type(self.index_reg))
-        #print(hex(self.PC))
-        #print("pc", self.PC)
+
         '''' game_dat is the first byte of game file. This line here efftively 
         loads the game into system memory'''''
-
-
-        # These machines had 4096 (0x1000) memory locations, all of which are 8 bits (a byte)
 
         # *************Fetch Opcode*************** "the instruction from memory at the current PC (program counter)"
         self.opcode = self.system_mem[self.PC]  # memory[0,1,2,3,...,0x200,...,0x1000]
 
-        #self.system_mem[self.PC]
-        #print("memory PC is pointing to is ",hex(self.system_mem[self.PC]))
-        #self.system_mem[self.PC + 1]
-        #print("mem +1 contains",hex(self.system_mem[self.PC+1]))
-
         # ************* Decode ******************
         self.opcode = self.system_mem[self.PC] << 8 | self.system_mem[self.PC + 1] #increase pc by 1.
-        #print("above", hex(self.opcode))
-
-        # Do this by setting index register equal to opcode
         extracted_op = self.opcode & 0xF000
-        # print("extracted_op = ", hex(extracted_op))
-        #print("PC = ", hex(self.PC))
-        #print("opcode = ", hex(self.opcode))
 
         #***************************************OPCODES***************************************#
 
@@ -157,9 +151,9 @@ class Memory:
         if(self.opcode == 0x00EE): # Returns from a subroutine.
             # The interpreter sets the program counter to the address at the top of the stack, then subtracts 1 from the stack pointer.
             print("calling subroutine at ", hex(self.opcode & 0x0FFF), "and returning to address in self.index_reg", hex(self.index_reg))
-            self.PC = self.stack.pop()
+            self.PC = self.stack.pop() +2
             #print("PC = ", hex(self.PC))
-            self.PC +=2
+
 
         #0xE0
         elif self.opcode == 0x00E0: #clean screen
@@ -182,7 +176,6 @@ class Memory:
              #The stack is only used to store return addresses when subroutines are called.
              print("working with opcode ", hex(self.opcode))
              print("calling subroutine at ", hex(self.opcode & 0x0FFF))
-
              self.stack.append(self.PC)
              self.PC = self.opcode & 0x0FFF # how can this be. PC is only 12 bits and opcode is 16. not after line 79 it aint
              print("what is in pc?" , hex(self.PC))
@@ -197,39 +190,31 @@ class Memory:
             # todo find out why else needs to be self.PC +=4. F3 OK is F3 NO if this is present
             else:
                 print("next instruction")
-                self.PC += 4
+                self.PC += 2
 
         #4XNN NN= 2a
         elif extracted_op == 0x4000:  #Skips the next instruction if VX does not equal NN. (Usually the next instruction is a jump to skip a code block);
             print("working with opcode ", hex(self.opcode))
             if self.VX[self.opcode >> 8 & 0x0F] != self.opcode & 0x00FF:
                 print("Vx contains = ", hex(self.VX[self.opcode >> 8 & 0x0F]) )
-                self.PC += 2 #0x7 takes this route
+                self.PC += 4 #0x7 takes this route
             else:
                 # 0x4 takes this route
                 self.PC += 2
 
         #5XY0
         elif (extracted_op == 0x5000): #Skips the next instruction if VX equals VY. (Usually the next instruction is a jump to skip a code block)
-            print("working with opcode ", hex(self.opcode))
-                        #Vx                                    Vy
+            print("working with opcode $# ", hex(self.opcode))
+            print(self.opcode >> 8 & 0x0F,"   ", self.VX[self.opcode >> 4 & 0x00F])
             if self.VX[self.opcode >> 8 & 0x0F] == self.VX[self.opcode >> 4 & 0x00F]:
-
                 self.PC += 4
             else:
-                # 0x5 takes this route
-                self.PC += 2
+                self.PC += 2 # 0x5 takes this route
 
         #6XNN
         elif (extracted_op == 0x6000): #Sets VX to NN.
-
             print("working with opcode ", hex(self.opcode))
             self.VX[self.opcode >>8 & 0x0F] = self.opcode & 0x00FF #this translate to VX[register_number]
-
-            #for x in self.VX:
-            #    print("V[",i,"] = ",hex(x))
-            #    i+=1
-
             self.PC += 2
 
         #7XNN THIS IS BEHIND BY 2 COUNTS
@@ -243,7 +228,6 @@ class Memory:
             print(" 0x8_ working with opcode ", hex(self.opcode))
             determn_bit = self.opcode & 0x000F
             print("determn_bit is", hex(determn_bit))
-
 
             if determn_bit == 0x0: #Sets VX to the value of VY.
                 #print("working with opcode ", hex(self.opcode), " x = ", hex(self.opcode >>8 & 0x0F), " y = ",hex(self.opcode >>4 & 0x00F) ) YATTA
@@ -310,9 +294,9 @@ class Memory:
         elif (extracted_op == 0x9000): #Skips the next instruction if VX does not equal VY.
             print("working with opcode ", hex(self.opcode))
             if self.VX[self.opcode >> 8 & 0x0F] != self.VX[self.opcode >> 4 & 0x00F]:
-                self.PC += 2
-            else:
                 self.PC += 4
+            else:
+                self.PC += 2
 
 
         #ANNN
@@ -336,17 +320,12 @@ class Memory:
         #calls pygame draw function
         elif(extracted_op == 0xD000):# Draws a sprite at coordinate (VX, VY) that has a width of 8 pixels and a height of N pixels
             print("working with opcode ", hex(self.opcode))
-
             self.x_coord = self.VX[self.opcode >> 8 & 0x0F] #Vx
             self.y_coord = self.VX[self.opcode >> 4 & 0x00F] #vy
             self.PC += 2
             height = self.opcode & 0x000F
             self.draw(height,start_time)
 
-
-            #print(hex(x_coord), "   ", hex(y_coord), "     height: ", hex(height))
-            #print("WOOOOOOOTtttttttttttttTTT iz i?    " ,hex(x_coord),"   ",hex(y_coord),"   ",hex(height))
-            #take contents of VX and VY and draw to screen at (VX,VY). width is a constant 8 pixels and height is N
             return self.rects
 
         #EXA1, EX9E
@@ -362,17 +341,29 @@ class Memory:
         elif extracted_op == 0xF000:
             extrctd_bit = self.opcode & 0x0FF
             print("extrctd_bit ",hex(extrctd_bit))
+
             #FX07
+            #Set VX = delay timer
+            #important for ball
+            self.VX[self.opcode >> 8 & 0x0F] = self.delay_timer
+            self.PC += 2
+
             #FX0A
             #FX15
+            #set delay timer = VX
             if extrctd_bit == 0x15:
-                    self.delay_timer = self.opcode >>8 & 0x0F
-                    self.PC += 2
+                self.delay_timer = self.VX[self.opcode >>8 & 0x0F]
+                self.PC += 2
             #FX18
             #FX1E
 
 
             #FX29
+            #set I = location of sprite for digit VX
+            if extrctd_bit == 0x29:
+                self.index_reg = self.system_mem[self.VX[self.opcode >> 8 & 0x0F]]
+                self.PC += 2
+
             #FX33
             #Stores the binary-coded decimal representation of VX, with the hundreds digit
             # in memory at location in I, the tens digit at location I+1, and the ones digit at location I+2.
@@ -405,10 +396,6 @@ class Memory:
                     self.VX[i] = self.system_mem[self.index_reg + i]
                 self.PC += 2
 
-
-
-
-
         else:
             print("Unknown instruction: %X" % self.opcode)
             print("extracted_op ", extracted_op)
@@ -418,10 +405,10 @@ class Memory:
 
         # Update timers
     def loadGame(self):    #22fc 6b0c == 34 252 107 12
-            #change
+            #changex
 
-            filename ='test_opcode.ch8'
-            #filename = 'pong2.c8'
+            #filename ='test_opcode.ch8'
+            filename = 'pong2.c8'
             game_data = open(filename, "rb").read()
             read_file = 0 #used to increment through chip8 file
             while read_file < len(game_data):
