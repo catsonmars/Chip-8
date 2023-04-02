@@ -387,7 +387,7 @@ class Memory:
             elif extrctd_bit == 0x15:
                 print("0x15, delay timer")
                 self.delay_timer = self.VX[self.opcode >>8 & 0x0F]
-                self.PC += 2
+                self.PC += 6
 
             #FX18
             # Sets the sound timer to VX.
